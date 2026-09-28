@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Clínica Vida Plena — Demo de Agendamento via WhatsApp</title>
+<style>
+  :root{
+    --wa-dark:#075E54; --wa-green:#128C7E; --wa-light:#25D366;
+    --wa-bg:#e5ddd5; --wa-chat:#efe7dd; --bubble-in:#ffffff;
+    --bubble-out:#dcf8c6; --text:#1c1c1c; --muted:#667781;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0; padding:0; height:100%; font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; background:#0b141a; color:var(--text);}
+  .page{min-height:100%; display:flex; align-items:center; justify-content:center; padding:16px; background:radial-gradient(circle at 50% 20%, #122a33 0%, #0b141a 70%);}
+  /* Moldura do celular */
+  .phone{width:100%; max-width:400px; height:min(92vh, 780px); min-height:560px; background:#111; border-radius:32px; padding:10px; box-shadow:0 24px 60px rgba(0,0,0,.55), inset 0 0 0 2px #2a2a2a;}
+  .screen{width:100%; height:100%; border-radius:24px; overflow:hidden; display:flex; flex-direction:column; background:var(--wa-bg);}
+  /* Cabeçalho do WhatsApp */
+  .header{background:var(--wa-dark); color:#fff; padding:10px 12px; display:flex; align-items:center; gap:10px; box-shadow:0 1px 3px rgba(0,0,0,.2); z-index:2;}
+  .avatar{width:42px; height:42px; border-radius:50%; background:linear-gradient(135deg,#25D366,#128C7E); display:flex; align-items:center; justify-content:center; font-size:22px; flex-shrink:0;}
+  .header .info{flex:1; min-width:0;}
+  .header .name{font-weight:600; font-size:15px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .header .status{font-size:12px; opacity:.9;}
+  .header .status.online{color:#7fffd4;}
+  /* Área de mensagens */
+  .chat{flex:1; overflow-y:auto; padding:14px 12px; display:flex; flex-direction:column; gap:8px;
+    background-color:var(--wa-chat);
+    background-image:radial-gradient(rgba(0,0,0,.045) 1px, transparent 1px);
+    background-size:18px 18px;}
+  .row{display:flex;}
+  .row.bot{justify-content:flex-start;}
+  .row.user{justify-content:flex-end;}
+  .bubble{max-width:82%; padding:8px 11px; border-radius:10px; font-size:14.5px; line-height:1.45; box-shadow:0 1px 1px rgba(0,0,0,.12); word-wrap:break-word; position:relative;}
+  .bot .bubble{background:var(--bubble-in); border-top-left-radius:2px;}
+  .user .bubble{background:var(--bubble-out); border-top-right-radius:2px;}
+  .bubble .time{display:block; text-align:right; font-size:10.5px; color:var(--muted); margin-top:4px;}
+  /* Bolhas com botões clicáveis */
+  .quick-btns{display:flex; flex-wrap:wrap; gap:6px; margin-top:8px;}
+  .quick-btn{border:1px solid #c8d8ce; background:#f4faf6; color:var(--wa-dark); border-radius:18px; padding:7px 13px; font-size:13px; font-weight:600; cursor:pointer; transition:background .15s, transform .1s;}
+  .quick-btn:hover{background:#d9f0e4;}
+  .quick-btn:active{transform:scale(.96);}
+  .quick-btn:disabled{opacity:.45; cursor:default;}
+  .quick-btn.busy{background:#f3f3f3; color:#999; border-color:#e0e0e0; text-decoration:line-through;}
+  .quick-btn.primary{background:var(--wa-green); border-color:var(--wa-green); color:#fff;}
+  .quick-btn.primary:hover{background:#0e7a6f;}
+  /* Indicador "digitando..." */
+  .typing{display:inline-flex; gap:4px; align-items:center; padding:12px 14px;}
+  .typing span{width:7px; height:7px; border-radius:50%; background:#9aa5ab; animation:blink 1.2s infinite;}
+  .typing span:nth-child(2){animation-delay:.2s;} .typing span:nth-child(3){animation-delay:.4s;}
+  @keyframes blink{0%,60%,100%{opacity:.25; transform:translateY(0);} 30%{opacity:1; transform:translateY(-4px);}}
+  /* Campo de entrada */
+  .inputbar{background:#f0f0f0; padding:8px 10px; display:flex; gap:8px; align-items:center;}
+  .inputbar input{flex:1; border:none; border-radius:22px; padding:11px 15px; font-size:15px; outline:none;}
+  .inputbar button{width:44px; height:44px; border:none; border-radius:50%; background:var(--wa-green); color:#fff; font-size:18px; cursor:pointer; flex-shrink:0; transition:background .15s;}
+  .inputbar button:hover{background:#0e7a6f;}
+  .hint{font-size:11px; color:var(--muted); text-align:center; padding:4px 8px 8px; background:#f0f0f0;}
+  /* Faixa de título da página (desktop) */
+  .badge{display:none;}
+  @media (max-width:480px){
+    .page{padding:0;}
+    .phone{max-width:none; height:100dvh; min-height:100dvh; border-radius:0; padding:0;}
+    .screen{border-radius:0;}
+  }
+  @media (min-width:481px){
+    .page{flex-direction:column; gap:18px;}
+    .badge{display:block; color:#aebac1; font-size:13px; text-align:center; max-width:420px;}
+    .badge b{color:#fff;}
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="badge">💬 <b>DEMO</b> — Simulação navegável de um chatbot de agendamento para WhatsApp. Digite ou toque nos botões.</div>
+  <div class="phone">
+    <div class="screen">
+      <!-- Cabeçalho -->
+      <div class="header">
+        <div class="avatar">🩺</div>
+        <div class="info">
+          <div class="name">Clínica Vida Plena</div>
+          <div class="status" id="status">online</div>
+        </div>
+        <div style="font-size:18px; opacity:.9;">📹&nbsp;&nbsp;📞</div>
+      </div>
+      <!-- Conversa -->
+      <div class="chat" id="chat"></div>
+      <!-- Entrada -->
+      <div class="inputbar">
+        <input id="input" type="text" placeholder="Digite uma mensagem" autocomplete="off" maxlength="200">
+        <button id="send" title="Enviar">➤</button>
+      </div>
+      <div class="hint">Demonstração — nenhuma mensagem é enviada de verdade.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ================================================================
+   MÁQUINA DE ESTADOS DO CHATBOT
+   ---------------------------------------------------------------
+   Cada "estado" representa o ponto da conversa em que o bot espera
+   uma resposta específica. O objeto `state` guarda em qual estado
+   estamos e o `dados` acumula as escolhas do usuário ao longo do
+   fluxo:
+
+     INICIO      -> bot exibe saudação + menu numerado de serviços
+     SERVICO     -> aguarda escolha do serviço (botão ou número/texto)
+     DATA        -> bot lista os próximos 7 dias úteis; aguarda data
+     HORARIO     -> bot lista horários; aguarda horário livre
+     NOME        -> aguarda o nome do paciente
+     CONFIRMACAO -> bot mostra resumo; aguarda Confirmar / Refazer
+     FINALIZADO  -> agendamento concluído; oferece "Nova conversa"
+
+   A função `onUserInput(texto)` é a única porta de entrada do que o
+   usuário digita ou clica, e ela despacha para o tratador do estado
+   atual. Botões antigos são desabilitados após o clique para que a
+   conversa não possa "voltar" por engano.
+   ================================================================ */
+
+// ---------- Configuração ----------
+const SERVICOS = [
+  { id: 1, nome: "Consulta geral",   icone: "🩺" },
+  { id: 2, nome: "Odontologia",      icone: "🦷" },
+  { id: 3, nome: "Fisioterapia",     icone: "🏋️" },
+  { id: 4, nome: "Exames",           icone: "🧪" },
+];
+const HORARIOS_BASE = ["08:00","09:00","10:00","11:00","13:00","14:00","15:00","16:00","17:00"];
+
+// ---------- Estado da conversa ----------
+let state = "INICIO";                     // estado atual da máquina
+let dados = {};                           // {servico, data, hora, nome, protocolo}
+
+// ---------- Elementos da tela ----------
+const chatEl   = document.getElementById("chat");
+const inputEl  = document.getElementById("input");
+const sendBtn  = document.getElementById("send");
+const statusEl = document.getElementById("status");
+
+// ---------- Utilidades ----------
+// Hora atual no formato HH:MM para o rodapé das bolhas
+function agora(){ const d = new Date(); return String(d.getHours()).padStart(2,"0") + ":" + String(d.getMinutes()).padStart(2,"0"); }
+
+// Gera os próximos 7 dias ÚTEIS (seg-sex) a partir de hoje, em pt-BR
+function proximosDiasUteis(){
+  const dias = [];
+  const d = new Date();
+  d.setDate(d.getDate() + 1); // começa amanhã
+  const fmt = new Intl.DateTimeFormat("pt-BR", { weekday:"short", day:"2-digit", month:"2-digit" });
+  while (dias.length < 7){
+    const diaSemana = d.getDay();          // 0=dom, 6=sáb
+    if (diaSemana !== 0 && diaSemana !== 6){
+      dias.push({ rotulo: fmt.format(d), chave: d.toISOString().slice(0,10) });
+    }
+    d.setDate(d.getDate() + 1);
+  }
+  return dias;
+}
+
+// Horários ocupados de forma DETERMINÍSTICA (mesma data = mesmos horários
+// ocupados, sem aleatoriedade). Usa um hash simples da data+hora.
+function horarioOcupado(chaveData, hora){
+  const s = chaveData + hora;
+  let h = 0;
+  for (let i = 0; i < s.length; i++){ h = (h * 31 + s.charCodeAt(i)) >>> 0; }
+  return (h % 3) === 0; // ~1 em cada 3 horários aparece ocupado
+}
+
+// Retorna a lista de horários com flag de ocupado. Garante DETERMINISTICAMENTE
+// que ao menos um horário fique livre (evita beco sem saída na data).
+function montarHorarios(chaveData){
+  const lista = HORARIOS_BASE.map(h => ({ hora: h, ocupado: horarioOcupado(chaveData, h) }));
+  if (lista.every(x => x.ocupado)) lista[0].ocupado = false;
+  return lista;
+}
+function congelarBotoes(){
+  document.querySelectorAll(".quick-btn").forEach(b => b.disabled = true);
+}
+
+// ---------- Renderização ----------
+function addBolha(textoHTML, quem, botoes){
+  const row = document.createElement("div");
+  row.className = "row " + quem;
+  const b = document.createElement("div");
+  b.className = "bubble";
+  b.innerHTML = textoHTML + `<span class="time">${agora()}${quem === "user" ? " ✓✓" : ""}</span>`;
+  if (botoes && botoes.length){
+    const wrap = document.createElement("div");
+    wrap.className = "quick-btns";
+    botoes.forEach(btn => {
+      const el = document.createElement("button");
+      el.className = "quick-btn" + (btn.classe ? " " + btn.classe : "") + (btn.ocupado ? " busy" : "");
+      el.textContent = btn.rotulo;
+      el.disabled = !!btn.ocupado;
+      if (!btn.ocupado) el.onclick = () => onUserInput(btn.valor);
+      wrap.appendChild(el);
+    });
+    b.appendChild(wrap);
+  }
+  row.appendChild(b);
+  chatEl.appendChild(row);
+  chatEl.scrollTop = chatEl.scrollHeight;
+  return row;
+}
+
+// Exibe "digitando..." e depois entrega a mensagem do bot
+function botDiz(textoHTML, botoes, atraso = 900){
+  statusEl.textContent = "digitando...";
+  statusEl.classList.remove("online");
+  const t = document.createElement("div");
+  t.className = "row bot";
+  t.innerHTML = `<div class="bubble"><div class="typing"><span></span><span></span><span></span></div></div>`;
+  chatEl.appendChild(t);
+  chatEl.scrollTop = chatEl.scrollHeight;
+  setTimeout(() => {
+    t.remove();
+    statusEl.textContent = "online";
+    statusEl.classList.add("online");
+    addBolha(textoHTML, "bot", botoes);
+  }, atraso);
+}
+
+// ---------- Entrada do usuário (ÚNICA porta de entrada) ----------
+// Recebe texto digitado OU o valor de um botão clicado e despacha
+// conforme o estado atual da máquina.
+function onUserInput(texto){
+  const limpo = String(texto).trim();
+  if (!limpo) return;
+  congelarBotoes();                       // botões antigos não valem mais
+  addBolha(escapeHTML(limpo), "user");     // eco da mensagem do usuário
+
+  switch (state){
+    case "INICIO":      tratarServico(limpo);    break;
+    case "SERVICO":     tratarServico(limpo);    break;
+    case "DATA":        tratarData(limpo);       break;
+    case "HORARIO":     tratarHorario(limpo);    break;
+    case "NOME":        tratarNome(limpo);       break;
+    case "CONFIRMACAO": tratarConfirmacao(limpo);break;
+    case "FINALIZADO":  tratarFinalizado(limpo); break;
+  }
+}
+
+function escapeHTML(s){
+  return s.replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+
+// ---------- Passo 1: saudação + menu ----------
+function iniciar(){
+  state = "INICIO";
+  dados = {};
+  const menu = SERVICOS.map(s => `${s.id}️⃣ ${s.icone} ${s.nome}`).join("<br>");
+  botDiz(
+    `Olá! 👋 Bem-vindo(a) à <b>Clínica Vida Plena</b>.<br><br>` +
+    `Para agendar, escolha um serviço digitando o <b>número</b> ou tocando no botão:<br><br>${menu}`,
+    SERVICOS.map(s => ({ rotulo: `${s.id} · ${s.icone} ${s.nome}`, valor: String(s.id) }))
+  );
+  state = "SERVICO";
+}
+
+// Aceita número ("2"), nome do serviço ("odonto", "dentista") ou variações
+function tratarServico(limpo){
+  const t = limpo.toLowerCase();
+  let achou = SERVICOS.find(s => String(s.id) === t);
+  if (!achou){
+    achou = SERVICOS.find(s =>
+      s.nome.toLowerCase().includes(t) || t.includes(s.nome.toLowerCase().split(" ")[0]) ||
+      (s.nome === "Odontologia" && /odonto|dentista|dente/.test(t)) ||
+      (s.nome === "Consulta geral" && /consulta|cl[ií]nico|m[eé]dico/.test(t)) ||
+      (s.nome === "Fisioterapia" && /fisio/.test(t)) ||
+      (s.nome === "Exames" && /exame|sangue|laborat/.test(t))
+    );
+  }
+  if (!achou){
+    botDiz(`Hmm, não entendi. 🤔<br>Digite o <b>número</b> de 1 a 4 ou toque em um serviço:`,
+      SERVICOS.map(s => ({ rotulo: `${s.id} · ${s.icone} ${s.nome}`, valor: String(s.id) })));
+    return; // permanece no estado SERVICO — sem beco sem saída
+  }
+  dados.servico = achou;
+  // ---------- Passo 2: datas ----------
+  state = "DATA";
+  dados.dias = proximosDiasUteis();
+  const botoes = dados.dias.map((d, i) => ({ rotulo: d.rotulo, valor: String(i + 1) }));
+  botDiz(
+    `Ótima escolha! ✅ <b>${achou.icone} ${achou.nome}</b><br><br>` +
+    `Em qual data você prefere? (próximos dias úteis)`,
+    botoes
+  );
+}
+
+// ---------- Passo 3: data -> horários ----------
+function tratarData(limpo){
+  const n = parseInt(limpo, 10);
+  const idx = (!isNaN(n) && n >= 1 && n <= dados.dias.length) ? n - 1 : -1;
+  if (idx < 0){
+    botDiz(`Escolha uma das datas acima digitando o <b>número</b> (1 a ${dados.dias.length}):`,
+      dados.dias.map((d, i) => ({ rotulo: d.rotulo, valor: String(i + 1) })));
+    return; // permanece em DATA
+  }
+  dados.data = dados.dias[idx];
+  state = "HORARIO";
+  const botoes = montarHorarios(dados.data.chave).map(x =>
+    ({ rotulo: x.ocupado ? `${x.hora} (ocupado)` : x.hora, valor: x.hora, ocupado: x.ocupado })
+  );
+  botDiz(
+    `📅 <b>${dados.data.rotulo}</b> — horários disponíveis:<br>` +
+    `<i>(riscados já estão ocupados)</i>`,
+    botoes
+  );
+}
+
+// ---------- Passo 4: horário -> pede o nome ----------
+function tratarHorario(limpo){
+  const normalizado = limpo.replace(".", ":").replace("h", "");
+  const achou = HORARIOS_BASE.find(h => h === limpo || h === normalizado);
+  if (!achou || horarioOcupado(dados.data.chave, achou)){
+    botDiz(`Esse horário não está disponível. 😕<br>Escolha um dos horários <b>livres</b>:`,
+      montarHorarios(dados.data.chave).map(x =>
+        ({ rotulo: x.ocupado ? `${x.hora} (ocupado)` : x.hora, valor: x.hora, ocupado: x.ocupado })
+      ));
+    return; // permanece em HORARIO
+  }
+  dados.hora = achou;
+  state = "NOME";
+  botDiz(`Perfeito! 🕐 <b>${achou}</b> reservado provisoriamente.<br><br>Agora me diga seu <b>nome completo</b>:`);
+}
+
+// ---------- Passo 5: nome -> resumo + confirmação ----------
+function tratarNome(limpo){
+  if (limpo.replace(/[^a-zA-ZÀ-ÿ ]/g, "").trim().length < 2){
+    botDiz(`Pode me informar seu nome, por favor? 🙂`);
+    return; // permanece em NOME
+  }
+  dados.nome = limpo;
+  state = "CONFIRMACAO";
+  botDiz(
+    `Confira os dados do agendamento: 📋<br><br>` +
+    `👤 <b>Nome:</b> ${escapeHTML(dados.nome)}<br>` +
+    `${dados.servico.icone} <b>Serviço:</b> ${dados.servico.nome}<br>` +
+    `📅 <b>Data:</b> ${dados.data.rotulo}<br>` +
+    `🕐 <b>Horário:</b> ${dados.hora}<br><br>` +
+    `Está tudo certo?`,
+    [
+      { rotulo: "✅ Confirmar", valor: "confirmar", classe: "primary" },
+      { rotulo: "🔄 Refazer",   valor: "refazer" }
+    ]
+  );
+}
+
+// ---------- Passo 6: confirmação / refazer ----------
+function tratarConfirmacao(limpo){
+  const t = limpo.toLowerCase();
+  const sim = /^(sim|s|confirmar|confirmado|ok|1|✅)/.test(t);
+  const nao = /^(n[aã]o|refazer|2|🔄|corrigir|voltar)/.test(t);
+  if (sim){
+    // Protocolo único: VP-ANO-número
+    const num = String(Math.floor(1000 + Math.random() * 9000));
+    dados.protocolo = `VP-${new Date().getFullYear()}-${num}`;
+    state = "FINALIZADO";
+    // Foto dos dados AGORA: se o usuário clicar em "Nova conversa" antes do
+    // lembrete chegar, o lembrete ainda usa os dados corretos deste agendamento.
+    const snap = { nome: dados.nome, servico: dados.servico, data: dados.data,
+                   hora: dados.hora, protocolo: dados.protocolo };
+    botDiz(
+      `🎉 <b>Agendamento confirmado!</b><br><br>` +
+      `📌 <b>Protocolo:</b> ${dados.protocolo}<br>` +
+      `👤 ${escapeHTML(dados.nome)}<br>` +
+      `${dados.servico.icone} ${dados.servico.nome}<br>` +
+      `📅 ${dados.data.rotulo} às ${dados.hora}<br><br>` +
+      `Obrigado por escolher a <b>Clínica Vida Plena</b>! 💚`
+    );
+    // ---------- Passo 7: lembrete da véspera (simulado) ----------
+    setTimeout(() => {
+      botDiz(
+        `🔔 <b>Lembrete automático</b> (simulação do que chegaria na véspera):<br><br>` +
+        `Olá, ${escapeHTML(snap.nome.split(" ")[0])}! Passando para lembrar do seu ` +
+        `<b>${snap.servico.nome.toLowerCase()}</b> <b>amanhã</b> (${snap.data.rotulo}) às <b>${snap.hora}</b> ` +
+        `na Clínica Vida Plena. Protocolo ${snap.protocolo}.<br><br>` +
+        `Chegue com 15 minutos de antecedência e traga um documento com foto. 📄`,
+        [{ rotulo: "💬 Nova conversa", valor: "nova", classe: "primary" }],
+        1200
+      );
+    }, 1600);
+  } else if (nao){
+    // Refazer: volta ao menu de serviços preservando a conversa
+    botDiz(`Sem problema! Vamos recomeçar a escolha. 🔄`);
+    setTimeout(() => iniciar(), 900);
+  } else {
+    botDiz(`Digite <b>"confirmar"</b> para concluir ou <b>"refazer"</b> para recomeçar:`,
+      [
+        { rotulo: "✅ Confirmar", valor: "confirmar", classe: "primary" },
+        { rotulo: "🔄 Refazer",   valor: "refazer" }
+      ]);
+    // permanece em CONFIRMACAO
+  }
+}
+
+// ---------- Passo 8: pós-conclusão ----------
+function tratarFinalizado(limpo){
+  const t = limpo.toLowerCase();
+  if (/nova|recome[cç]ar|outro|menu|oi|ol[aá]/.test(t)){
+    botDiz(`Claro! Iniciando uma nova conversa... 💬`);
+    setTimeout(() => iniciar(), 900);
+  } else {
+    botDiz(`Se precisar de algo mais, é só digitar <b>"nova"</b> para começar outro agendamento. 🙂`,
+      [{ rotulo: "💬 Nova conversa", valor: "nova", classe: "primary" }]);
+  }
+}
+
+// ---------- Ligações da UI ----------
+sendBtn.onclick = () => { onUserInput(inputEl.value); inputEl.value = ""; inputEl.focus(); };
+inputEl.addEventListener("keydown", e => { if (e.key === "Enter"){ onUserInput(inputEl.value); inputEl.value = ""; } });
+
+// ---------- Início ----------
+iniciar();
+</script>
+</body>
+</html>
